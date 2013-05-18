@@ -1,4 +1,4 @@
-﻿/*
+/*
  * OpenMAX HW acceleration
  *
  * copyright (c) 2013 Vladimir Voroshilor
