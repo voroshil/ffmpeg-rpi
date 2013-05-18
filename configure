@@ -1899,7 +1899,7 @@ zmbv_encoder_select="zlib"
 # hardware accelerators
 crystalhd_deps="libcrystalhd_libcrystalhd_if_h"
 dxva2_deps="dxva2api_h"
-openmax_deps="interface_vcos_vcos.h"
+openmax_deps="interface_vcos_vcos_h"
 vaapi_deps="va_va_h"
 vda_deps="VideoDecodeAcceleration_VDADecoder_h pthreads"
 vda_extralibs="-framework CoreFoundation -framework VideoDecodeAcceleration -framework QuartzCore"
