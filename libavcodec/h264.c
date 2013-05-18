@@ -83,6 +83,9 @@ static const enum AVPixelFormat h264_hwaccel_pixfmt_list_420[] = {
     AV_PIX_FMT_VDPAU,
 #endif
     AV_PIX_FMT_YUV420P,
+#if CONFIG_H264_OPENMAX_HWACCEL
+    AV_PIX_FMT_OPENMAX_VLD,
+#endif
     AV_PIX_FMT_NONE
 };
 
@@ -100,6 +103,9 @@ static const enum AVPixelFormat h264_hwaccel_pixfmt_list_jpeg_420[] = {
     AV_PIX_FMT_VDPAU,
 #endif
     AV_PIX_FMT_YUVJ420P,
+#if CONFIG_H264_OPENMAX_HWACCEL
+    AV_PIX_FMT_OPENMAX_VLD,
+#endif
     AV_PIX_FMT_NONE
 };
 
