@@ -20,6 +20,7 @@
 
 #include "openmax.h"
 #include "h264.h"
+#include "bcm_host.h"
 
 #define VIDEO_ENCODE_INPUT_PORT  201
 #define VIDEO_ENCODE_OUTPUT_PORT 201
@@ -83,11 +84,14 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
   OMX_PARAM_PORTDEFINITIONTYPE def;
   OMX_VIDEO_PARAM_PORTFORMATTYPE format;
 
+   bcm_host_init();
    if ((ctx->client = ilclient_init()) == NULL) {
       return -3;
    }
 
-   if (OMX_Init() != OMX_ErrorNone) {
+   r = OMX_Init();
+   if (r != OMX_ErrorNone) {
+      av_log(avctx, AV_LOG_ERROR, "Error initializing OMX: %x\n", r);
       ilclient_destroy(ctx->client);
       return -4;
    }
