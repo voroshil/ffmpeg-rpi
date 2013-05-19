@@ -1415,6 +1415,7 @@ HAVE_LIST="
     atomics_native
     attribute_may_alias
     attribute_packed
+    bcm_host_h
     cdio_paranoia_h
     cdio_paranoia_paranoia_h
     CL_cl_h
@@ -3929,6 +3930,7 @@ check_func_headers windows.h VirtualAlloc
 check_func_headers glob.h glob
 
 check_header cl/cl.h
+check_header bcm_host.h
 check_header direct.h
 check_header dlfcn.h
 check_header dxva.h

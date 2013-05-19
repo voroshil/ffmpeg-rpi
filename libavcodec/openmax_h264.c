@@ -20,7 +20,10 @@
 
 #include "openmax.h"
 #include "h264.h"
+
+#ifdef HAVE_BCM_HOST_H
 #include "bcm_host.h"
+#endif
 
 #define VIDEO_ENCODE_INPUT_PORT  201
 #define VIDEO_ENCODE_OUTPUT_PORT 201
@@ -86,7 +89,10 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
   OMX_VIDEO_PARAM_PORTFORMATTYPE format;
   int bitrate;
 
+#ifdef HAVE_BCM_HOST_H
    bcm_host_init();
+#endif
+
    if ((ctx->client = ilclient_init()) == NULL) {
       return -3;
    }
@@ -213,6 +219,10 @@ int ff_openmax_destroy_decoder(AVCodecContext *avctx, struct openmax_context *ct
    if (ctx->client) {
    ilclient_destroy(ctx->client);
    }
+#ifdef HAVE_BCM_HOST_H
+   bcm_host_deinit();
+#endif
+
   return 0;
 }
 static int openmax_h264_start_frame(AVCodecContext *avctx,
