@@ -25,21 +25,36 @@
 
 #include <stdint.h>
 #include "libavcodec/version.h"
+#include "avcodec.h"
 
+#define USE_VCHIQ_ARM
+#define USE_EXTERNAL_LIBBCM_HOST
+#define USE_EXTERNAL_OMX
+#define HAVE_LIBBCM_HOST
+#define HAVE_LIBOPENMAX=2
+#define OMX
+
+#undef NDEBUG
+#include "IL/OMX_Video.h"
 #include "ilclient.h"
 
 struct openmax_context {
    ILCLIENT_T *client;
    COMPONENT_T *list[5];
-   COMPONENT_T *video_encode = NULL;
-}
+   COMPONENT_T *video_encode;
+   int width;
+   int height;
+   int pix_fmt;
+   OMX_VIDEO_CODINGTYPE openmax_input_format;
+   OMX_COLOR_FORMATTYPE openmax_output_format;
+};
 
 /** Create the video decoder. */
-int ff_openmax_create_decoder(struct openmax_context *openmax_ctx,
+int ff_openmax_create_decoder(AVCodecContext * avctx, struct openmax_context *openmax_ctx,
                           uint8_t *extradata,
                           int extradata_size);
 
 /** Destroy the video decoder. */
-int ff_openmax_destroy_decoder(struct openmax_context *openmax_ctx);
+int ff_openmax_destroy_decoder(AVCodecContext *avctx, struct openmax_context *openmax_ctx);
 
 #endif /* AVCODEC_OPENMAX_H */
