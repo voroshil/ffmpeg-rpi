@@ -46,34 +46,35 @@ print_def(AVCodecContext *avctx,OMX_PARAM_PORTDEFINITIONTYPE def)
 	  def.format.video.nSliceHeight,
 	  def.format.video.xFramerate, def.format.video.eColorFormat);
 }
-static int openmax_set_encoder_bitrate(AVCodecContext *avctx, OMX_VIDEO_PARAM_BITRATETYPE *pbitrateType, COMPONENT_T *video_encode)
+static int openmax_set_decoder_bitrate(COMPONENT_T *video_decode, int nPortIndex, int nTargetBitrate)
 {
-    OMX_ERRORTYPE r;
-   // set current bitrate to 1Mbit
-   memset(pbitrateType, 0, sizeof(OMX_VIDEO_PARAM_BITRATETYPE));
-   pbitrateType->nSize = sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE);
-   pbitrateType->nVersion.nVersion = OMX_VERSION;
-   pbitrateType->eControlRate = OMX_Video_ControlRateVariable;
-   pbitrateType->nTargetBitrate = 1000000;
-   pbitrateType->nPortIndex = VIDEO_ENCODE_OUTPUT_PORT;
-   r = OMX_SetParameter(ILC_GET_HANDLE(video_encode), OMX_IndexParamVideoBitrate, pbitrateType);
+   OMX_VIDEO_PARAM_BITRATETYPE bitrateType;
+   OMX_ERRORTYPE r;
+
+   // set new bitrate
+   memset(&bitrateType, 0, sizeof(OMX_VIDEO_PARAM_BITRATETYPE));
+   bitrateType.nSize = sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE);
+   bitrateType.nVersion.nVersion = OMX_VERSION;
+   bitrateType.eControlRate = OMX_Video_ControlRateVariable;
+   bitrateType.nTargetBitrate = nTargetBitrate;
+   bitrateType.nPortIndex = nPortIndex;
+
+   r = OMX_SetParameter(ILC_GET_HANDLE(video_decode), OMX_IndexParamVideoBitrate, &bitrateType);
    if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter() for bitrate for video_encode port 201 failed with %x!\n",r);
       return -1;
    }
 
    // get current bitrate
-   memset(pbitrateType, 0, sizeof(OMX_VIDEO_PARAM_BITRATETYPE));
-   pbitrateType->nSize = sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE);
-   pbitrateType->nVersion.nVersion = OMX_VERSION;
-   pbitrateType->nPortIndex = VIDEO_ENCODE_OUTPUT_PORT;
+   memset(&bitrateType, 0, sizeof(OMX_VIDEO_PARAM_BITRATETYPE));
+   bitrateType.nSize = sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE);
+   bitrateType.nVersion.nVersion = OMX_VERSION;
+   bitrateType.nPortIndex = nPortIndex;
 
-   if (OMX_GetParameter(ILC_GET_HANDLE(video_encode), OMX_IndexParamVideoBitrate,pbitrateType) != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter() for video_encode for bitrate port 201 failed!\n");
-      return -1;
+   if (OMX_GetParameter(ILC_GET_HANDLE(video_decode), OMX_IndexParamVideoBitrate,&bitrateType) != OMX_ErrorNone) {
+      return -2;
    }
 
-   return 0;
+   return bitrateType.nTargetBitrate;
 }
 
 int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx,
@@ -83,6 +84,7 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
   OMX_ERRORTYPE r;
   OMX_PARAM_PORTDEFINITIONTYPE def;
   OMX_VIDEO_PARAM_PORTFORMATTYPE format;
+  int bitrate;
 
    bcm_host_init();
    if ((ctx->client = ilclient_init()) == NULL) {
@@ -95,97 +97,111 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
       ilclient_destroy(ctx->client);
       return -4;
    }
-   // create video_encode
-   r = ilclient_create_component(ctx->client, &ctx->video_encode, "video_encode",
+   ctx->nInputPortIndex = VIDEO_DECODE_INPUT_PORT;
+   ctx->nOutputPortIndex = VIDEO_DECODE_OUTPUT_PORT;
+
+   // create video_decode
+   r = ilclient_create_component(ctx->client, &ctx->video_decode, "video_decode",
 				 ILCLIENT_DISABLE_ALL_PORTS |
 				 ILCLIENT_ENABLE_INPUT_BUFFERS |
 				 ILCLIENT_ENABLE_OUTPUT_BUFFERS);
    if (r != 0) {
-      av_log(avctx, AV_LOG_ERROR, "ilclient_create_component() for video_encode failed with %x!\n",r);
+      av_log(avctx, AV_LOG_ERROR, "ilclient_create_component() for video_decode failed with %x!\n",r);
       return -1;
    }
-   ctx->list[0] = ctx->video_encode;
-
-   // get current settings of video_encode component from port 200
-   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
-   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
-   def.nVersion.nVersion = OMX_VERSION;
-   def.nPortIndex = VIDEO_ENCODE_INPUT_PORT;
-
-   if (OMX_GetParameter(ILC_GET_HANDLE(ctx->video_encode), OMX_IndexParamPortDefinition, &def) != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter() for video_encode port 200 failed!\n");
-      return -1;
-   }
-
-   print_def(avctx, def);
-
-   // Port 200: in 1/1 115200 16 enabled,not pop.,not cont. 320x240 320x240 @1966080 20
-   def.format.video.nFrameWidth = avctx->width;
-   def.format.video.nFrameHeight = avctx->height;
-   def.format.video.xFramerate = 30 << 16;
-   def.format.video.nSliceHeight = def.format.video.nFrameHeight;
-   def.format.video.nStride = def.format.video.nFrameWidth;
-   def.format.video.eColorFormat = OMX_COLOR_FormatYUV420PackedPlanar;
-
-   print_def(avctx, def);
-
-   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_encode), OMX_IndexParamPortDefinition, &def);
-   if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter() for video_encode port 200 failed with %x!\n",r);
-      return -1;
-   }
+   ctx->list[0] = ctx->video_decode;
 
    memset(&format, 0, sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE));
    format.nSize = sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE);
    format.nVersion.nVersion = OMX_VERSION;
-   format.nPortIndex = VIDEO_ENCODE_OUTPUT_PORT;
+   format.nPortIndex = VIDEO_DECODE_INPUT_PORT;
+   format.xFramerate = (avctx->time_base.den << 16) / (avctx->time_base.num);
+   format.xFramerate /= avctx->ticks_per_frame;
    format.eCompressionFormat = OMX_VIDEO_CodingAVC;
 
-   av_log(avctx, AV_LOG_DEBUG, "OMX_SetParameter for video_encode:201...\n");
-   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_encode), OMX_IndexParamVideoPortFormat, &format);
+   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamVideoPortFormat, &format);
    if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter() for video_encode port 201 failed with %x!\n", r);
+      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamVideoPortFormat) for video_decode port %d failed with %x!\n",format.nPortIndex, r);
+      return -1;
+   }
+   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
+   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+   def.nVersion.nVersion = OMX_VERSION;
+   def.nPortIndex = ctx->nInputPortIndex;
+   av_log(avctx, AV_LOG_DEBUG, "OMX_GetParameter for video_decode:%d...\n", def.nPortIndex);
+   r = OMX_GetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+   if (r != OMX_ErrorNone) {
+      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter(OMX_IndexParamPortDefinition) for video_encode port %d failed!\n", def.nPortIndex);
+      return -1;
+   }
+   print_def(avctx, def);
+
+   def.format.video.nFrameWidth = avctx->width;
+   def.format.video.nFrameHeight = avctx->height;
+   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+   if (r != OMX_ErrorNone) {
+      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamPortDefinition) for video_decode port %d failed with %x!\n", def.nPortIndex, r);
+      return -1;
+   }
+   print_def(avctx, def);
+
+   // Port 200: in 1/1 115200 16 enabled,not pop.,not cont. 320x240 320x240 @1966080 20
+   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
+   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+   def.nVersion.nVersion = OMX_VERSION;
+   def.nPortIndex = ctx->nOutputPortIndex;
+   av_log(avctx, AV_LOG_DEBUG, "OMX_GetParameter for video_decode:%d...\n", def.nPortIndex);
+   r = OMX_GetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+   if (r != OMX_ErrorNone) {
+      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter(OMX_IndexParamPortDefinition) for video_encode port %d failed!\n", def.nPortIndex);
+      return -1;
+   }
+   print_def(avctx, def);
+
+   def.format.video.xFramerate = (avctx->time_base.den << 16) / (avctx->time_base.num);
+   def.format.video.xFramerate /= avctx->ticks_per_frame;
+   def.format.video.eColorFormat = OMX_COLOR_FormatYUV420PackedPlanar;
+
+   print_def(avctx, def);
+
+   av_log(avctx, AV_LOG_DEBUG, "OMX_SetParameter for video_decode:%d...\n", def.nPortIndex);
+   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+   if (r != OMX_ErrorNone) {
+      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamPortDefinition) for video_decode port %d failed with %x!\n", def.nPortIndex, r);
       return -1;
    }
 
-   OMX_VIDEO_PARAM_BITRATETYPE bitrateType;
-   if (openmax_set_encoder_bitrate(avctx, &bitrateType, ctx->video_encode) < 0)
-   {
-     av_log(avctx, AV_LOG_ERROR, "unable to set bitrate!\n",r);
-     return -1;
-   }
-   av_log(avctx, AV_LOG_VERBOSE, "Current Bitrate=%u\n",bitrateType.nTargetBitrate);
 
    av_log(avctx, AV_LOG_DEBUG, "encode to idle...\n");
-   if (ilclient_change_component_state(ctx->video_encode, OMX_StateIdle) == -1) {
-      av_log(avctx, AV_LOG_WARNING, "ilclient_change_component_state(video_encode, OMX_StateIdle) failed\n");
+   if (ilclient_change_component_state(ctx->video_decode, OMX_StateIdle) == -1) {
+      av_log(avctx, AV_LOG_WARNING, "ilclient_change_component_state(video_decode, OMX_StateIdle) failed\n");
    }
 
-   av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for 200...\n");
-   if (ilclient_enable_port_buffers(ctx->video_encode, VIDEO_ENCODE_INPUT_PORT, NULL, NULL, NULL) != 0) {
-      av_log(avctx, AV_LOG_ERROR, "enabling port buffers for 200 failed!\n");
+   av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for %d...\n", VIDEO_DECODE_INPUT_PORT);
+   if (ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, NULL, NULL, NULL) != 0) {
+      av_log(avctx, AV_LOG_ERROR, "enabling port buffers for %d failed!\n", VIDEO_DECODE_INPUT_PORT);
       return -1;
    }
 
-   av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for 201...\n");
-   if (ilclient_enable_port_buffers(ctx->video_encode, VIDEO_ENCODE_OUTPUT_PORT, NULL, NULL, NULL) != 0) {
-      av_log(avctx, AV_LOG_ERROR, "enabling port buffers for 201 failed!\n");
+   av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for %d...\n", VIDEO_DECODE_OUTPUT_PORT);
+   if (ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL) != 0) {
+      av_log(avctx, AV_LOG_ERROR, "enabling port buffers for %d failed!\n", VIDEO_DECODE_OUTPUT_PORT);
       return -1;
    }
 
    av_log(avctx, AV_LOG_DEBUG, "encode to executing...\n");
-   ilclient_change_component_state(ctx->video_encode, OMX_StateExecuting);
+   ilclient_change_component_state(ctx->video_decode, OMX_StateExecuting);
 
    return 0;
 }
 
 int ff_openmax_destroy_decoder(AVCodecContext *avctx, struct openmax_context *ctx)
 {
-   if (ctx->video_encode) {
-   av_log(avctx, AV_LOG_DEBUG, "disabling port buffers for 200...\n");
-   ilclient_disable_port_buffers(ctx->video_encode, VIDEO_ENCODE_INPUT_PORT, NULL, NULL, NULL);
-   av_log(avctx, AV_LOG_DEBUG, "disabling port buffers for 201...\n");
-   ilclient_disable_port_buffers(ctx->video_encode, VIDEO_ENCODE_OUTPUT_PORT, NULL, NULL, NULL);
+   if (ctx->video_decode) {
+   av_log(avctx, AV_LOG_DEBUG, "disabling port buffers for %d...\n", VIDEO_DECODE_INPUT_PORT);
+   ilclient_disable_port_buffers(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, NULL, NULL, NULL);
+   av_log(avctx, AV_LOG_DEBUG, "disabling port buffers for %d...\n", VIDEO_DECODE_OUTPUT_PORT);
+   ilclient_disable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL);
    }
    if (ctx->list){
    ilclient_state_transition(ctx->list, OMX_StateIdle);
@@ -212,7 +228,7 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
 #if 0
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
-  buf = ilclient_get_input_buffer(ctx->video_encode, VIDEO_ENCODE_INPUT_PORT, 1);
+  buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
   if (buf == NULL) {
     av_log(avctx, AV_LOG_WARNING, "Unable to get input buffer!\n");
     return -1;
@@ -222,7 +238,7 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
   memcpy(buf->pBuffer, buffer, size);
   buf->nFilledLen = size;
 
-  if (OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_encode), buf) != OMX_ErrorNone) {
+  if (OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_decode), buf) != OMX_ErrorNone) {
      av_log(avctx, AV_LOG_ERROR, "Error emptying buffer!\n");
      return -1;
   }
@@ -238,9 +254,9 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     H264Context *h                      = avctx->priv_data;
     AVFrame *frame                      = &h->cur_pic_ptr->f;
 
-    out = ilclient_get_output_buffer(ctx->video_encode, VIDEO_ENCODE_OUTPUT_PORT, 1);
+    out = ilclient_get_output_buffer(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, 1);
 
-    r = OMX_FillThisBuffer(ILC_GET_HANDLE(ctx->video_encode), out);
+    r = OMX_FillThisBuffer(ILC_GET_HANDLE(ctx->video_decode), out);
     if (r != OMX_ErrorNone) {
         av_log(avctx, AV_LOG_ERROR, "Error filling buffer: %x\n", r);
         return -1;

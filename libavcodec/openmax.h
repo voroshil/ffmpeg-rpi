@@ -41,12 +41,14 @@
 struct openmax_context {
    ILCLIENT_T *client;
    COMPONENT_T *list[5];
-   COMPONENT_T *video_encode;
+   COMPONENT_T *video_decode;
    int width;
    int height;
    int pix_fmt;
    OMX_VIDEO_CODINGTYPE openmax_input_format;
    OMX_COLOR_FORMATTYPE openmax_output_format;
+   int nInputPortIndex;
+   int nOutputPortIndex;
 };
 
 /** Create the video decoder. */
