@@ -177,20 +177,22 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
 
 int ff_openmax_destroy_decoder(AVCodecContext *avctx, struct openmax_context *ctx)
 {
+   if (ctx->video_encode) {
    av_log(avctx, AV_LOG_DEBUG, "disabling port buffers for 200...\n");
    ilclient_disable_port_buffers(ctx->video_encode, VIDEO_ENCODE_INPUT_PORT, NULL, NULL, NULL);
    av_log(avctx, AV_LOG_DEBUG, "disabling port buffers for 201...\n");
    ilclient_disable_port_buffers(ctx->video_encode, VIDEO_ENCODE_OUTPUT_PORT, NULL, NULL, NULL);
-
+   }
+   if (ctx->list){
    ilclient_state_transition(ctx->list, OMX_StateIdle);
    ilclient_state_transition(ctx->list, OMX_StateLoaded);
 
    ilclient_cleanup_components(ctx->list);
-
+   }
    OMX_Deinit();
-
+   if (ctx->client) {
    ilclient_destroy(ctx->client);
-
+   }
   return 0;
 }
 static int openmax_h264_start_frame(AVCodecContext *avctx,
