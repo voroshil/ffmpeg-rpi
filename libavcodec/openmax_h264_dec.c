@@ -33,6 +33,7 @@ typedef struct {
 static enum AVPixelFormat get_format(struct AVCodecContext *avctx,
         const enum AVPixelFormat *fmt)
 {
+    av_log(avctx, AV_LOG_DEBUG, "get_format called\n");
     return AV_PIX_FMT_OPENMAX_VLD;
 }
 #if 0
@@ -153,8 +154,8 @@ static av_cold int openmax_init(AVCodecContext *avctx)
     ctx->h264_initialized = 0;
 
     /* check if OpenMAX supports this file */
-    if (check_format(avctx) < 0)
-        goto failed;
+//    if (check_format(avctx) < 0)
+//        goto failed;
 
     /* init vda */
     memset(openmax_ctx, 0, sizeof(struct openmax_context));
@@ -218,5 +219,5 @@ AVCodec ff_h264_openmax_decoder = {
     .capabilities   = CODEC_CAP_DELAY,
     .flush          = openmax_flush,
     .long_name      = NULL_IF_CONFIG_SMALL("H.264 (OpenMAX acceleration)"),
-    .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUYV422, AV_PIX_FMT_NONE},
+    .pix_fmts       = (const enum AVPixelFormat[]){AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUYV422, AV_PIX_FMT_NONE},
 };
