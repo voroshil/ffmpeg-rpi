@@ -103,13 +103,14 @@ final:
 static int openmax_decode(AVCodecContext *avctx,
         void *data, int *got_frame, AVPacket *avpkt)
 {
-#if 0
     OpenMAXDecoderContext *ctx = avctx->priv_data;
     AVFrame *pic = data;
     int ret;
 
     ret = ff_h264_decoder.decode(avctx, data, got_frame, avpkt);
+    av_log(avctx, AV_LOG_DEBUG, "after ff_h264_decoder.decode: got_frame=%d,ret=%d\n", *got_frame);
     if (*got_frame) {
+#if 0
         AVBufferRef *buffer = pic->buf[0];
         VDABufferContext *context = av_buffer_get_opaque(buffer);
         CVPixelBufferRef cv_buffer = (CVPixelBufferRef)pic->data[3];
@@ -127,12 +128,11 @@ static int openmax_decode(AVCodecContext *avctx,
             pic->data[0] = CVPixelBufferGetBaseAddress(cv_buffer);
             pic->linesize[0] = CVPixelBufferGetBytesPerRow(cv_buffer);
         }
+#endif
     }
     avctx->pix_fmt = ctx->pix_fmt;
 
     return ret;
-#endif
-    return 0;
 }
 static av_cold int openmax_close(AVCodecContext *avctx)
 {
