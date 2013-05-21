@@ -281,7 +281,7 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
 
-  av_log(avctx, AV_LOG_DEBUG, "openmax_decode_slice!\n");
+  av_dlog(avctx, AV_LOG_DEBUG, "openmax_decode_slice!\n");
   for(copied = 0; copied < size; copied += data_length) {
     buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
     if (buf == NULL) {
@@ -316,7 +316,7 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     OMX_ERRORTYPE r;
     AVFrame *frame                      = ctx->frame;
 
-    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame!\n");
+    av_dlog(avctx, "openmax_end_frame!\n");
    if (!ctx->changed)
     return -1;
     out = ilclient_get_output_buffer(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, 0);
@@ -324,13 +324,13 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Not getting it :(\n");
         return -1;
     }
-    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame. pre fill\n");
+    av_dlog(avctx, "openmax_end_frame. pre fill\n");
     r = OMX_FillThisBuffer(ILC_GET_HANDLE(ctx->video_decode), out);
     if (r != OMX_ErrorNone) {
         av_log(avctx, AV_LOG_ERROR, "Error filling buffer: %x\n", r);
         return -1;
     }
-    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame. post fill %x\n", out->nFlags);
+    av_dlog(avctx, "openmax_end_frame. post fill %x\n", out->nFlags);
 
     {
         frame->format = ctx->pix_fmt;
@@ -342,7 +342,7 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
         ctx->frame_size = out->nFilledLen;
         out->nFilledLen = 0;
     }
-    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame. returning 0\n");
+    av_dlog(avctx, "openmax_end_frame. returning 0\n");
     return 0;
 }
 AVHWAccel ff_h264_openmax_hwaccel = {

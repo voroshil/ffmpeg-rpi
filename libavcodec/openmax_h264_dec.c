@@ -46,7 +46,6 @@ static int openmax_decode(AVCodecContext *avctx,
 
     if (!avctx->hwaccel)
 	avctx->hwaccel = ff_find_hwaccel(avctx->codec->id, AV_PIX_FMT_OPENMAX_VLD);
-    av_log(avctx, AV_LOG_DEBUG, "hw=%p\n", avctx->hwaccel);
     if (!avctx->hwaccel)
     {
 	return -1;
