@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2013, Vladimir Voroshilov
  *
  * This file is part of FFmpeg.
@@ -22,11 +22,7 @@
 #include "h264.h"
 #include "internal.h"
 
-extern AVCodec ff_h264_decoder, ff_h264_openmax_decoder;
-
 typedef struct {
-    H264Context h264ctx;
-    int h264_initialized;
     struct openmax_context openmax_ctx;
     enum AVPixelFormat pix_fmt;
 } OpenMAXDecoderContext;
@@ -38,70 +34,7 @@ static enum AVPixelFormat get_format(struct AVCodecContext *avctx,
 //    return AV_PIX_FMT_YUV420P;
     return AV_PIX_FMT_OPENMAX_VLD;
 }
-#if 0
-static void release_buffer(void *opaque, uint8_t *data)
-{
-    OpenMAXBufferContext *context = opaque;
-    CVPixelufferUnlockBaseAddress(context->cv_buffer, 0);
-    CVPixelBufferRelease(context->cv_buffer);
-    av_free(context);
-}
 
-static int get_buffer2(AVCodecContext *avctx, AVFrame *pic, int flag)
-{
-    VDABufferContext *context = av_mallocz(sizeof(VDABufferContext));
-    AVBufferRef *buffer = av_buffer_create(NULL, 0, release_buffer, context, 0);
-    if (!context || !buffer) {
-        av_free(context);
-        return AVERROR(ENOMEM);
-    }
-
-    pic->buf[0] = buffer;
-    pic->data[0] = (void *)1;
-    return 0;
-}
-#endif
-static av_cold int check_format(AVCodecContext *avctx)
-{
-    AVCodecParserContext *parser;
-    uint8_t *pout;
-    int psize;
-    int index;
-    H264Context *h;
-    int ret = -1;
-
-    /* init parser & parse file */
-    parser = av_parser_init(avctx->codec->id);
-    if (!parser) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to open H.264 parser.\n");
-        goto final;
-    }
-    parser->flags = PARSER_FLAG_COMPLETE_FRAMES;
-    index = av_parser_parse2(parser, avctx, &pout, &psize, NULL, 0, 0, 0, 0);
-    if (index < 0) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to parse this file.\n");
-        goto release_parser;
-    }
-
-    /* check if support */
-    h = parser->priv_data;
-    switch (h->sps.bit_depth_luma) {
-    case 8:
-        if (!CHROMA444(h) && !CHROMA422(h)) {
-            // only this will H.264 decoder switch to hwaccel
-            ret = 0;
-            break;
-        }
-    default:
-        av_log(avctx, AV_LOG_ERROR, "Unsupported file %d.\n", h->sps.bit_depth_luma);
-    }
-
-release_parser:
-    av_parser_close(parser);
-
-final:
-    return ret;
-}
 static int openmax_decode(AVCodecContext *avctx,
         void *data, int *got_frame, AVPacket *avpkt)
 {
@@ -138,8 +71,6 @@ static av_cold int openmax_close(AVCodecContext *avctx)
     /* release buffers and decoder */
     ff_openmax_destroy_decoder(avctx, &ctx->openmax_ctx);
     /* close H.264 decoder */
-    if (ctx->h264_initialized)
-        ff_h264_decoder.close(avctx);
     return 0;
 }
 static av_cold int openmax_init(AVCodecContext *avctx)
@@ -147,15 +78,7 @@ static av_cold int openmax_init(AVCodecContext *avctx)
     OpenMAXDecoderContext *ctx = avctx->priv_data;
     struct openmax_context *openmax_ctx = &ctx->openmax_ctx;
     int status;
-    int ret;
 
-    ctx->h264_initialized = 0;
-
-    /* check if OpenMAX supports this file */
-//    if (check_format(avctx) < 0)
-//        goto failed;
-
-    /* init vda */
     memset(openmax_ctx, 0, sizeof(struct openmax_context));
 
     openmax_ctx->width = avctx->width;
@@ -183,19 +106,6 @@ static av_cold int openmax_init(AVCodecContext *avctx)
 
     /* changes callback functions */
     avctx->get_format = get_format;
-//    avctx->get_buffer2 = get_buffer2;
-#if FF_API_GET_BUFFER
-    // force the old get_buffer to be empty
-    avctx->get_buffer = NULL;
-#endif
-
-    /* init H.264 decoder */
-    ret = ff_h264_decoder.init(avctx);
-    if (ret < 0) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to open H.264 decoder.\n");
-        goto failed;
-    }
-    ctx->h264_initialized = 1;
 
     return 0;
 
