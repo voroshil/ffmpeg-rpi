@@ -25,6 +25,8 @@
 #include "bcm_host.h"
 #endif
 
+#include "internal.h"
+
 #define VIDEO_ENCODE_INPUT_PORT  201
 #define VIDEO_ENCODE_OUTPUT_PORT 201
 #define VIDEO_DECODE_INPUT_PORT  130
@@ -234,6 +236,8 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
    av_log(avctx, AV_LOG_DEBUG, "encode to executing...\n");
    ilclient_change_component_state(ctx->video_decode, OMX_StateExecuting);
 
+   ctx->frame = av_frame_alloc();
+
    return 0;
 }
 
@@ -277,11 +281,11 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
 
-  av_log(avctx, AV_LOG_WARNING, "openmax_decode_slice!\n");
+  av_log(avctx, AV_LOG_DEBUG, "openmax_decode_slice!\n");
   for(copied = 0; copied < size; copied += data_length) {
     buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
     if (buf == NULL) {
-      av_log(avctx, AV_LOG_WARNING, "Unable to get input buffer!\n");
+      av_log(avctx, AV_LOG_ERROR, "Unable to get input buffer!\n");
       return -1;
     }
     data_length = FFMIN(size - copied, buf->nAllocLen);
@@ -310,11 +314,9 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     struct openmax_context *ctx = avctx->hwaccel_context;
     OMX_BUFFERHEADERTYPE *out;
     OMX_ERRORTYPE r;
-    H264Context *h                      = avctx->priv_data;
-//    AVFrame *frame                      = &h->cur_pic_ptr->f;
     AVFrame *frame                      = ctx->frame;
 
-    av_log(avctx, AV_LOG_WARNING, "openmax_end_frame!\n");
+    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame!\n");
    if (!ctx->changed)
     return -1;
     out = ilclient_get_output_buffer(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, 0);
@@ -322,24 +324,24 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Not getting it :(\n");
         return -1;
     }
-    av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. pre fill\n");
+    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame. pre fill\n");
     r = OMX_FillThisBuffer(ILC_GET_HANDLE(ctx->video_decode), out);
     if (r != OMX_ErrorNone) {
         av_log(avctx, AV_LOG_ERROR, "Error filling buffer: %x\n", r);
         return -1;
     }
-    av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. post fill %x\n", out->nFlags);
+    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame. post fill %x\n", out->nFlags);
 
     {
-    AVBufferRef * outbuf = av_buffer_alloc(out->nFilledLen);
-    memcpy(outbuf->data, out->pBuffer, out->nFilledLen);
-    frame->buf[0] = outbuf;
-    frame->data[0] = outbuf->data;
-    frame->linesize[0] = ctx->width;
-    ctx->frame_size = out->nFilledLen;
-    out->nFilledLen = 0;
+        frame->format = ctx->pix_fmt;
+	int ret = ff_reget_buffer(avctx, frame);
+	if (ret < 0)
+	  return -1;
+        memcpy(frame->data[0], out->pBuffer, out->nFilledLen);
+        ctx->frame_size = out->nFilledLen;
+        out->nFilledLen = 0;
     }
-    av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. returning 0\n");
+    av_log(avctx, AV_LOG_DEBUG, "openmax_end_frame. returning 0\n");
     return 0;
 }
 AVHWAccel ff_h264_openmax_hwaccel = {

@@ -40,27 +40,32 @@ static int openmax_decode(AVCodecContext *avctx,
 {
     OpenMAXDecoderContext *ctx = avctx->priv_data;
     AVFrame *pic = data;
-    int ret;
+    int ret = 0;
 
-    ctx->openmax_ctx.frame = pic;
+    *got_frame = 0;
+
     if (!avctx->hwaccel)
 	avctx->hwaccel = ff_find_hwaccel(avctx->codec->id, AV_PIX_FMT_OPENMAX_VLD);
     av_log(avctx, AV_LOG_DEBUG, "hw=%p\n", avctx->hwaccel);
     if (!avctx->hwaccel)
     {
-	*got_frame = 0;
 	return -1;
     }
+
+#if 1
     avctx->hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
-    if (avctx->hwaccel->end_frame(avctx) <0){
-	*got_frame = 0;
-	ret = 0;
-    }else{
-	*got_frame = 1;
-        pic->format = ctx->pix_fmt;
-	ret = ctx->openmax_ctx.frame_size;
-        avctx->pix_fmt = PIX_FMT_YUV420P;
+    if (avctx->hwaccel->end_frame(avctx) <0 )
+      return 0;
+ 
+    ret = av_frame_ref(data, ctx->openmax_ctx.frame);
+    if (ret < 0){
+        return ret;
     }
+    ret = ctx->openmax_ctx.frame_size;
+    avctx->pix_fmt = PIX_FMT_YUV420P;
+#endif
+
+    *got_frame = 1;
     return ret;
 }
 static av_cold int openmax_close(AVCodecContext *avctx)
