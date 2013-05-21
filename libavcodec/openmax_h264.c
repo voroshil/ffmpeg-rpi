@@ -36,54 +36,43 @@ static void openmax_vcos_log(const VCOS_LOG_CAT_T *cat, VCOS_LOG_LEVEL_T _level,
   av_log(NULL, AV_LOG_DEBUG, "\n");
 }
 
-static void print_def2(AVCodecContext *avctx, COMPONENT_T *comp, int nPort)
+static void print_port_properties(AVCodecContext *avctx,OMX_PARAM_PORTDEFINITIONTYPE* pdef)
 {
-   OMX_PARAM_PORTDEFINITIONTYPE def;
-   OMX_ERRORTYPE r;
-
-   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
-   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
-   def.nVersion.nVersion = OMX_VERSION;
-   def.nPortIndex = nPort;
-   r = OMX_GetParameter(ILC_GET_HANDLE(comp), OMX_IndexParamPortDefinition, &def);
-   if (r == OMX_ErrorNone) {
-   av_log(avctx, AV_LOG_DEBUG, "Port %u: %s %u/%u %u %u %s,%s,%s %ux%u %ux%u @%u %u\n",
-	  def.nPortIndex,
-	  def.eDir == OMX_DirInput ? "in" : "out",
-	  def.nBufferCountActual,
-	  def.nBufferCountMin,
-	  def.nBufferSize,
-	  def.nBufferAlignment,
-	  def.bEnabled ? "enabled" : "disabled",
-	  def.bPopulated ? "populated" : "not pop.",
-	  def.bBuffersContiguous ? "contig." : "not cont.",
-	  def.format.video.nFrameWidth,
-	  def.format.video.nFrameHeight,
-	  def.format.video.nStride,
-	  def.format.video.nSliceHeight,
-	  def.format.video.xFramerate, def.format.video.eColorFormat);
-   }   
-
+  av_log(avctx, AV_LOG_DEBUG, "Port %u: %s %u/%u %u %u %s,%s,%s %ux%u %ux%u @%u %u\n",
+      pdef->nPortIndex,
+      pdef->eDir == OMX_DirInput ? "in" : "out",
+      pdef->nBufferCountActual,
+      pdef->nBufferCountMin,
+      pdef->nBufferSize,
+      pdef->nBufferAlignment,
+      pdef->bEnabled ? "enabled" : "disabled",
+      pdef->bPopulated ? "populated" : "not pop.",
+      pdef->bBuffersContiguous ? "contig." : "not cont.",
+      pdef->format.video.nFrameWidth,
+      pdef->format.video.nFrameHeight,
+      pdef->format.video.nStride,
+      pdef->format.video.nSliceHeight,
+      pdef->format.video.xFramerate,
+      pdef->format.video.eColorFormat);
 }
-static void
-print_def(AVCodecContext *avctx,OMX_PARAM_PORTDEFINITIONTYPE def)
+
+static void dump_port_properties(AVCodecContext *avctx, OMX_HANDLETYPE handle, int nPort)
 {
-   av_log(avctx, AV_LOG_DEBUG, "Port %u: %s %u/%u %u %u %s,%s,%s %ux%u %ux%u @%u %u\n",
-	  def.nPortIndex,
-	  def.eDir == OMX_DirInput ? "in" : "out",
-	  def.nBufferCountActual,
-	  def.nBufferCountMin,
-	  def.nBufferSize,
-	  def.nBufferAlignment,
-	  def.bEnabled ? "enabled" : "disabled",
-	  def.bPopulated ? "populated" : "not pop.",
-	  def.bBuffersContiguous ? "contig." : "not cont.",
-	  def.format.video.nFrameWidth,
-	  def.format.video.nFrameHeight,
-	  def.format.video.nStride,
-	  def.format.video.nSliceHeight,
-	  def.format.video.xFramerate, def.format.video.eColorFormat);
+  OMX_PARAM_PORTDEFINITIONTYPE def;
+  OMX_ERRORTYPE r;
+
+  memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
+  def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+  def.nVersion.nVersion = OMX_VERSION;
+  def.nPortIndex = nPort;
+  r = OMX_GetParameter(handle, OMX_IndexParamPortDefinition, &def);
+  if (r != OMX_ErrorNone) {
+    av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter(OMX_IndexParamPortDefinition) for port %d of component %p failed with error 0x%x!\n", def.nPortIndex, handle, r);
+    return;
+  }
+  print_port_properties(avctx, &def);
 }
+
 static void port_callback(void *userdata, COMPONENT_T *comp, OMX_U32 data)
 {
     AVCodecContext *avctx = userdata;
@@ -189,7 +178,7 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
       av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamVideoPortFormat) for video_decode port %d failed with %x!\n",format.nPortIndex, r);
       return -1;
    }
-   print_def2(avctx, ctx->video_decode, VIDEO_DECODE_INPUT_PORT);
+   dump_port_properties(avctx, ILC_GET_HANDLE(ctx->video_decode), VIDEO_DECODE_INPUT_PORT);
 
 //   def.format.video.nFrameWidth = avctx->width;
 //   def.format.video.nFrameHeight = avctx->height;
@@ -297,7 +286,7 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
     {
 	ctx->changed = 1;
         ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL);
-	print_def2(avctx, ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT);
+	dump_port_properties(avctx, ILC_GET_HANDLE(ctx->video_decode), VIDEO_DECODE_OUTPUT_PORT);
     }
     if (ctx->packet_size >0)
     {
