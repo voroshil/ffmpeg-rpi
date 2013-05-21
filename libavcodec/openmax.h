@@ -29,11 +29,6 @@
 
 #define OMX_SKIP64BIT
 #define USE_VCHIQ_ARM
-#define USE_EXTERNAL_LIBBCM_HOST
-#define USE_EXTERNAL_OMX
-#define HAVE_LIBBCM_HOST
-#define HAVE_LIBOPENMAX=2
-#define OMX
 
 
 #undef NDEBUG
