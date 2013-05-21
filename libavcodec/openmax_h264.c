@@ -334,6 +334,7 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
 
     {
         frame->format = ctx->pix_fmt;
+	av_frame_unref(frame);
 	int ret = ff_reget_buffer(avctx, frame);
 	if (ret < 0)
 	  return -1;
