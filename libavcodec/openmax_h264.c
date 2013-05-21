@@ -281,7 +281,21 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
 
-  av_dlog(avctx, AV_LOG_DEBUG, "openmax_decode_slice!\n");
+  av_dlog(avctx, "openmax_decode_slice %p (size=%d)!\n", buffer, size);
+  if (!size && ctx->changed) {
+  ctx->changed = 0;
+  av_log(avctx, AV_LOG_VERBOSE, "openmax_decode_slice %p (size=%d)!\n", buffer, size);
+    OMX_BUFFERHEADERTYPE *buf;
+
+    buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
+    if (buf) {
+      buf->nFilledLen = 0;
+      buf->nFlags = OMX_BUFFERFLAG_TIME_UNKNOWN | OMX_BUFFERFLAG_EOS;
+      
+      OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_decode), buf);
+    }
+    return -1;
+  }
   for(copied = 0; copied < size; copied += data_length) {
     buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
     if (buf == NULL) {
@@ -331,6 +345,10 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
         return -1;
     }
     av_dlog(avctx, "openmax_end_frame. post fill %x\n", out->nFlags);
+    if (out->nFlags & OMX_BUFFERFLAG_EOS)
+    {
+	return -1;
+    }
 
     {
         frame->format = ctx->pix_fmt;
