@@ -42,8 +42,6 @@ static int openmax_decode(AVCodecContext *avctx,
     AVFrame *pic = data;
     int ret;
 
-//    ret = ff_h264_decoder.decode(avctx, data, got_frame, avpkt);
-//    av_log(avctx, AV_LOG_DEBUG, "after ff_h264_decoder.decode: got_frame=%d,ret=%d\n", *got_frame, ret);
     ctx->openmax_ctx.frame = pic;
     if (!avctx->hwaccel)
 	avctx->hwaccel = ff_find_hwaccel(avctx->codec->id, AV_PIX_FMT_OPENMAX_VLD);
