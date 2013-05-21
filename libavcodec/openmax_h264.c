@@ -30,10 +30,24 @@
 #define VIDEO_DECODE_INPUT_PORT  130
 #define VIDEO_DECODE_OUTPUT_PORT 131
 
-static void
-print_def(AVCodecContext *avctx,OMX_PARAM_PORTDEFINITIONTYPE def)
+static void openmax_vcos_log(const VCOS_LOG_CAT_T *cat, VCOS_LOG_LEVEL_T _level, const char *fmt, va_list args)
 {
-   av_log(avctx, AV_LOG_DEBUG, "Port %lu: %s %lu/%lu %lu %lu %s,%s,%s %lux%lu %lux%lu @%lu %u\n",
+  av_vlog(NULL, AV_LOG_DEBUG, fmt, args);
+  av_log(NULL, AV_LOG_DEBUG, "\n");
+}
+
+static void print_def2(AVCodecContext *avctx, COMPONENT_T *comp, int nPort)
+{
+   OMX_PARAM_PORTDEFINITIONTYPE def;
+   OMX_ERRORTYPE r;
+
+   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
+   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+   def.nVersion.nVersion = OMX_VERSION;
+   def.nPortIndex = nPort;
+   r = OMX_GetParameter(ILC_GET_HANDLE(comp), OMX_IndexParamPortDefinition, &def);
+   if (r == OMX_ErrorNone) {
+   av_log(avctx, AV_LOG_DEBUG, "Port %u: %s %u/%u %u %u %s,%s,%s %ux%u %ux%u @%u %u\n",
 	  def.nPortIndex,
 	  def.eDir == OMX_DirInput ? "in" : "out",
 	  def.nBufferCountActual,
@@ -48,6 +62,40 @@ print_def(AVCodecContext *avctx,OMX_PARAM_PORTDEFINITIONTYPE def)
 	  def.format.video.nStride,
 	  def.format.video.nSliceHeight,
 	  def.format.video.xFramerate, def.format.video.eColorFormat);
+   }   
+
+}
+static void
+print_def(AVCodecContext *avctx,OMX_PARAM_PORTDEFINITIONTYPE def)
+{
+   av_log(avctx, AV_LOG_DEBUG, "Port %u: %s %u/%u %u %u %s,%s,%s %ux%u %ux%u @%u %u\n",
+	  def.nPortIndex,
+	  def.eDir == OMX_DirInput ? "in" : "out",
+	  def.nBufferCountActual,
+	  def.nBufferCountMin,
+	  def.nBufferSize,
+	  def.nBufferAlignment,
+	  def.bEnabled ? "enabled" : "disabled",
+	  def.bPopulated ? "populated" : "not pop.",
+	  def.bBuffersContiguous ? "contig." : "not cont.",
+	  def.format.video.nFrameWidth,
+	  def.format.video.nFrameHeight,
+	  def.format.video.nStride,
+	  def.format.video.nSliceHeight,
+	  def.format.video.xFramerate, def.format.video.eColorFormat);
+}
+static void port_callback(void *userdata, COMPONENT_T *comp, OMX_U32 data)
+{
+    AVCodecContext *avctx = userdata;
+    struct openmax_context *ctx = avctx->hwaccel_context;
+    av_log(avctx, AV_LOG_DEBUG, "port settings changed\n");
+    ctx->changed = 1;
+
+   av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for %d...\n", VIDEO_DECODE_OUTPUT_PORT);
+   if (ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL) != 0) {
+      av_log(avctx, AV_LOG_ERROR, "enabling port buffers for %d failed!\n", VIDEO_DECODE_OUTPUT_PORT);
+   }
+    
 }
 static int openmax_set_decoder_bitrate(COMPONENT_T *video_decode, int nPortIndex, int nTargetBitrate)
 {
@@ -85,17 +133,21 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
                           int extradata_size)
 {
   OMX_ERRORTYPE r;
-  OMX_PARAM_PORTDEFINITIONTYPE def;
+//  OMX_PARAM_PORTDEFINITIONTYPE def;
   OMX_VIDEO_PARAM_PORTFORMATTYPE format;
-  int bitrate;
+  //int bitrate;
 
 #ifdef HAVE_BCM_HOST_H
    bcm_host_init();
 #endif
 
+
    if ((ctx->client = ilclient_init()) == NULL) {
       return -3;
    }
+
+   vcos_set_vlog_impl(openmax_vcos_log);
+//   ilclient_set_port_settings_callback(ctx->client, port_callback, avctx);
 
    r = OMX_Init();
    if (r != OMX_ErrorNone) {
@@ -105,6 +157,8 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
    }
    ctx->nInputPortIndex = VIDEO_DECODE_INPUT_PORT;
    ctx->nOutputPortIndex = VIDEO_DECODE_OUTPUT_PORT;
+   ctx->changed = 0;
+   ctx->first = 1;
 
    // create video_decode
    r = ilclient_create_component(ctx->client, &ctx->video_decode, "video_decode",
@@ -117,12 +171,17 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
    }
    ctx->list[0] = ctx->video_decode;
 
+   av_log(avctx, AV_LOG_DEBUG, "encode to idle...\n");
+   if (ilclient_change_component_state(ctx->video_decode, OMX_StateIdle) == -1) {
+      av_log(avctx, AV_LOG_WARNING, "ilclient_change_component_state(video_decode, OMX_StateIdle) failed\n");
+   }
+
    memset(&format, 0, sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE));
    format.nSize = sizeof(OMX_VIDEO_PARAM_PORTFORMATTYPE);
    format.nVersion.nVersion = OMX_VERSION;
    format.nPortIndex = VIDEO_DECODE_INPUT_PORT;
-   format.xFramerate = (avctx->time_base.den << 16) / (avctx->time_base.num);
-   format.xFramerate /= avctx->ticks_per_frame;
+//   format.xFramerate = (avctx->time_base.den << 16) / (avctx->time_base.num);
+//   format.xFramerate /= avctx->ticks_per_frame;
    format.eCompressionFormat = OMX_VIDEO_CodingAVC;
 
    r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamVideoPortFormat, &format);
@@ -130,58 +189,44 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
       av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamVideoPortFormat) for video_decode port %d failed with %x!\n",format.nPortIndex, r);
       return -1;
    }
-   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
-   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
-   def.nVersion.nVersion = OMX_VERSION;
-   def.nPortIndex = ctx->nInputPortIndex;
-   av_log(avctx, AV_LOG_DEBUG, "OMX_GetParameter for video_decode:%d...\n", def.nPortIndex);
-   r = OMX_GetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
-   if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter(OMX_IndexParamPortDefinition) for video_encode port %d failed!\n", def.nPortIndex);
-      return -1;
-   }
-   print_def(avctx, def);
+   print_def2(avctx, ctx->video_decode, VIDEO_DECODE_INPUT_PORT);
 
-   def.format.video.nFrameWidth = avctx->width;
-   def.format.video.nFrameHeight = avctx->height;
-   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
-   if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamPortDefinition) for video_decode port %d failed with %x!\n", def.nPortIndex, r);
-      return -1;
-   }
-   print_def(avctx, def);
+//   def.format.video.nFrameWidth = avctx->width;
+//   def.format.video.nFrameHeight = avctx->height;
+//   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+//   if (r != OMX_ErrorNone) {
+//      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamPortDefinition) for video_decode port %d failed with %x!\n", def.nPortIndex, r);
+//      return -1;
+//   }
+//   print_def(avctx, def);
 
    // Port 200: in 1/1 115200 16 enabled,not pop.,not cont. 320x240 320x240 @1966080 20
-   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
-   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
-   def.nVersion.nVersion = OMX_VERSION;
-   def.nPortIndex = ctx->nOutputPortIndex;
-   av_log(avctx, AV_LOG_DEBUG, "OMX_GetParameter for video_decode:%d...\n", def.nPortIndex);
-   r = OMX_GetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
-   if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter(OMX_IndexParamPortDefinition) for video_encode port %d failed!\n", def.nPortIndex);
-      return -1;
-   }
-   print_def(avctx, def);
+//   memset(&def, 0, sizeof(OMX_PARAM_PORTDEFINITIONTYPE));
+//   def.nSize = sizeof(OMX_PARAM_PORTDEFINITIONTYPE);
+//   def.nVersion.nVersion = OMX_VERSION;
+//   def.nPortIndex = ctx->nOutputPortIndex;
+//   av_log(avctx, AV_LOG_DEBUG, "OMX_GetParameter for video_decode:%d...\n", def.nPortIndex);
+//   r = OMX_GetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+//   if (r != OMX_ErrorNone) {
+//      av_log(avctx, AV_LOG_ERROR, "OMX_GetParameter(OMX_IndexParamPortDefinition) for video_encode port %d failed!\n", def.nPortIndex);
+//      return -1;
+//   }
+//   print_def(avctx, def);
 
-   def.format.video.xFramerate = (avctx->time_base.den << 16) / (avctx->time_base.num);
-   def.format.video.xFramerate /= avctx->ticks_per_frame;
-   def.format.video.eColorFormat = OMX_COLOR_FormatYUV420PackedPlanar;
+//   def.format.video.xFramerate = (avctx->time_base.den << 16) / (avctx->time_base.num);
+//   def.format.video.xFramerate /= avctx->ticks_per_frame;
+//   def.format.video.eColorFormat = OMX_COLOR_FormatYUV420PackedPlanar;
 
-   print_def(avctx, def);
+//   print_def(avctx, def);
 
-   av_log(avctx, AV_LOG_DEBUG, "OMX_SetParameter for video_decode:%d...\n", def.nPortIndex);
-   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
-   if (r != OMX_ErrorNone) {
-      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamPortDefinition) for video_decode port %d failed with %x!\n", def.nPortIndex, r);
-      return -1;
-   }
+//   av_log(avctx, AV_LOG_DEBUG, "OMX_SetParameter for video_decode:%d...\n", def.nPortIndex);
+//   r = OMX_SetParameter(ILC_GET_HANDLE(ctx->video_decode), OMX_IndexParamPortDefinition, &def);
+//   if (r != OMX_ErrorNone) {
+//      av_log(avctx, AV_LOG_ERROR, "OMX_SetParameter(OMX_IndexParamPortDefinition) for video_decode port %d failed with %x!\n", def.nPortIndex, r);
+//      return -1;
+//   }
 
 
-   av_log(avctx, AV_LOG_DEBUG, "encode to idle...\n");
-   if (ilclient_change_component_state(ctx->video_decode, OMX_StateIdle) == -1) {
-      av_log(avctx, AV_LOG_WARNING, "ilclient_change_component_state(video_decode, OMX_StateIdle) failed\n");
-   }
 
    av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for %d...\n", VIDEO_DECODE_INPUT_PORT);
    if (ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, NULL, NULL, NULL) != 0) {
@@ -189,12 +234,13 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
       return -1;
    }
 
+#if 0
    av_log(avctx, AV_LOG_DEBUG, "enabling port buffers for %d...\n", VIDEO_DECODE_OUTPUT_PORT);
    if (ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL) != 0) {
       av_log(avctx, AV_LOG_ERROR, "enabling port buffers for %d failed!\n", VIDEO_DECODE_OUTPUT_PORT);
       return -1;
    }
-
+#endif
    av_log(avctx, AV_LOG_DEBUG, "encode to executing...\n");
    ilclient_change_component_state(ctx->video_decode, OMX_StateExecuting);
 
@@ -226,7 +272,7 @@ int ff_openmax_destroy_decoder(AVCodecContext *avctx, struct openmax_context *ct
   return 0;
 }
 static int openmax_h264_start_frame(AVCodecContext *avctx,
-                                av_unused const uint8_t *buffer,
+                            av_unused const uint8_t *buffer,
                                 av_unused uint32_t size)
 {
     return 0;
@@ -236,22 +282,58 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
                                  uint32_t size)
 {
 #if 1
+  int bytes = 0;
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
-  av_log(avctx, AV_LOG_WARNING, "openmax_decode_slice!\n");
-  buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
-  if (buf == NULL) {
-    av_log(avctx, AV_LOG_WARNING, "Unable to get input buffer!\n");
-    return -1;
-  }
+  while (bytes < size) {
+    av_log(avctx, AV_LOG_WARNING, "openmax_decode_slice!\n");
+    buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
+    if (buf == NULL) {
+      av_log(avctx, AV_LOG_WARNING, "Unable to get input buffer!\n");
+      return -1;
+    }
+    if(!ctx->changed &&
+            (ilclient_remove_event(ctx->video_decode, OMX_EventPortSettingsChanged, VIDEO_DECODE_OUTPUT_PORT, 0, 0, 1) == 0))
+    {
+	ctx->changed = 1;
+        ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL);
+	print_def2(avctx, ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT);
+    }
+    if (ctx->packet_size >0)
+    {
+	memcpy(buf->pBuffer, ctx->packet, ctx->packet_size);
+    }
+    /* fill it */
+    memcpy(buf->pBuffer+ctx->packet_size, buffer + bytes, FFMIN(size-bytes, (16<<10)-ctx->packet_size));
+    buf->nFilledLen = FFMIN(size-bytes, (16<<10));
+    buf->nOffset = 0;
+    bytes += FFMIN(size-bytes, (16<<10)-ctx->packet_size);
+    if (ctx->first)
+     {
+        buf->nFlags = OMX_BUFFERFLAG_STARTTIME;
+        ctx->first = 0;
+     }
+     else
+        buf->nFlags = OMX_BUFFERFLAG_TIME_UNKNOWN;
+    ctx->packet_size = 0;
+    if (!ctx->changed){
+      int i = 0;
+      uint8_t *dest;
+      dest = buf->pBuffer;
+      for (i=0;i<(16<<10);i+=8)
+  	av_log(avctx, AV_LOG_DEBUG, "[%08x] %02x %02x %02x %02x %02x %02x %02x %02x\n", i, dest[i+0],dest[i+1],dest[i+2],dest[i+3],dest[i+4],dest[i+5],dest[i+6],dest[i+7]);
+    }
 
-  /* fill it */
-  memcpy(buf->pBuffer, buffer, size);
-  buf->nFilledLen = size;
-
-  if (OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_decode), buf) != OMX_ErrorNone) {
-     av_log(avctx, AV_LOG_ERROR, "Error emptying buffer!\n");
-     return -1;
+    if (OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_decode), buf) != OMX_ErrorNone) {
+       av_log(avctx, AV_LOG_ERROR, "Error emptying buffer!\n");
+       return -1;
+    }
+    if (size-bytes < (16<<10))
+    {
+	memcpy(ctx->packet, buffer+bytes, size-bytes);
+	ctx->packet_size = size-bytes;
+	break;
+    }
   }
 #endif
   return 0;
@@ -263,23 +345,25 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     OMX_BUFFERHEADERTYPE *out;
     OMX_ERRORTYPE r;
     H264Context *h                      = avctx->priv_data;
-    AVFrame *frame                      = &h->cur_pic_ptr->f;
+//    AVFrame *frame                      = &h->cur_pic_ptr->f;
+    AVFrame *frame                      = ctx->frame;
 
     av_log(avctx, AV_LOG_WARNING, "openmax_end_frame!\n");
+   if (!ctx->changed)
+    return -1;
     out = ilclient_get_output_buffer(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, 1);
-
+    if (!out) {
+        av_log(avctx, AV_LOG_ERROR, "Not getting it :(\n");
+        return -1;
+    }
     av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. pre fill\n");
     r = OMX_FillThisBuffer(ILC_GET_HANDLE(ctx->video_decode), out);
     if (r != OMX_ErrorNone) {
         av_log(avctx, AV_LOG_ERROR, "Error filling buffer: %x\n", r);
         return -1;
     }
-    av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. post fill\n");
+    av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. post fill %x\n", out->nFlags);
 
-    if (!out) {
-        av_log(avctx, AV_LOG_ERROR, "Not getting it :(\n");
-        return -1;
-    }
 #if 0
     if (out->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
            int i;
@@ -288,9 +372,15 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
            printf("\n");
     }
 #endif
-    frame->data[0] = out->pBuffer;
+    {
+    AVBufferRef * outbuf = av_buffer_alloc(out->nFilledLen);
+    memcpy(outbuf->data, out->pBuffer, out->nFilledLen);
+    frame->buf[0] = outbuf;
+    frame->data[0] = outbuf->data;
     frame->linesize[0] = ctx->width;
+    ctx->frame_size = out->nFilledLen;
     out->nFilledLen = 0;
+    }
 #endif
     av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. returning 0\n");
     return 0;

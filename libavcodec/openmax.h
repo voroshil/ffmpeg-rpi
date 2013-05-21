@@ -27,12 +27,14 @@
 #include "libavcodec/version.h"
 #include "avcodec.h"
 
+#define OMX_SKIP64BIT
 #define USE_VCHIQ_ARM
 #define USE_EXTERNAL_LIBBCM_HOST
 #define USE_EXTERNAL_OMX
 #define HAVE_LIBBCM_HOST
 #define HAVE_LIBOPENMAX=2
 #define OMX
+
 
 #undef NDEBUG
 #include "IL/OMX_Video.h"
@@ -49,6 +51,12 @@ struct openmax_context {
    OMX_COLOR_FORMATTYPE openmax_output_format;
    int nInputPortIndex;
    int nOutputPortIndex;
+   int changed;
+   AVFrame *frame;
+   int frame_size;
+   uint8_t packet[16<<10];
+   int packet_size;
+   int first;
 };
 
 /** Create the video decoder. */

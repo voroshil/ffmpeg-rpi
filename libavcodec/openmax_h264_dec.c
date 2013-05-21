@@ -20,6 +20,7 @@
 
 #include "openmax.h"
 #include "h264.h"
+#include "internal.h"
 
 extern AVCodec ff_h264_decoder, ff_h264_openmax_decoder;
 
@@ -34,6 +35,7 @@ static enum AVPixelFormat get_format(struct AVCodecContext *avctx,
         const enum AVPixelFormat *fmt)
 {
     av_log(avctx, AV_LOG_DEBUG, "get_format called\n");
+//    return AV_PIX_FMT_YUV420P;
     return AV_PIX_FMT_OPENMAX_VLD;
 }
 #if 0
@@ -107,31 +109,27 @@ static int openmax_decode(AVCodecContext *avctx,
     AVFrame *pic = data;
     int ret;
 
-    ret = ff_h264_decoder.decode(avctx, data, got_frame, avpkt);
-    av_log(avctx, AV_LOG_DEBUG, "after ff_h264_decoder.decode: got_frame=%d,ret=%d\n", *got_frame);
-    if (*got_frame) {
-#if 0
-        AVBufferRef *buffer = pic->buf[0];
-        VDABufferContext *context = av_buffer_get_opaque(buffer);
-        CVPixelBufferRef cv_buffer = (CVPixelBufferRef)pic->data[3];
-        CVPixelBufferLockBaseAddress(cv_buffer, 0);
-        context->cv_buffer = cv_buffer;
-        pic->format = ctx->pix_fmt;
-        if (CVPixelBufferIsPlanar(cv_buffer)) {
-            int i, count = CVPixelBufferGetPlaneCount(cv_buffer);
-            av_assert0(count < 4);
-            for (i = 0; i < count; i++) {
-                pic->data[i] = CVPixelBufferGetBaseAddressOfPlane(cv_buffer, i);
-                pic->linesize[i] = CVPixelBufferGetBytesPerRowOfPlane(cv_buffer, i);
-            }
-        } else {
-            pic->data[0] = CVPixelBufferGetBaseAddress(cv_buffer);
-            pic->linesize[0] = CVPixelBufferGetBytesPerRow(cv_buffer);
-        }
-#endif
+//    ret = ff_h264_decoder.decode(avctx, data, got_frame, avpkt);
+//    av_log(avctx, AV_LOG_DEBUG, "after ff_h264_decoder.decode: got_frame=%d,ret=%d\n", *got_frame, ret);
+    ctx->openmax_ctx.frame = pic;
+    if (!avctx->hwaccel)
+	avctx->hwaccel = ff_find_hwaccel(avctx->codec->id, AV_PIX_FMT_OPENMAX_VLD);
+    av_log(avctx, AV_LOG_DEBUG, "hw=%p\n", avctx->hwaccel);
+    if (!avctx->hwaccel)
+    {
+	*got_frame = 0;
+	return -1;
     }
-    avctx->pix_fmt = ctx->pix_fmt;
-
+    avctx->hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
+    if (avctx->hwaccel->end_frame(avctx) <0){
+	*got_frame = 0;
+	ret = -1;
+    }else{
+	*got_frame = 1;
+        pic->format = ctx->pix_fmt;
+	ret = ctx->openmax_ctx.frame_size;
+        avctx->pix_fmt = PIX_FMT_YUV420P;
+    }
     return ret;
 }
 static av_cold int openmax_close(AVCodecContext *avctx)
