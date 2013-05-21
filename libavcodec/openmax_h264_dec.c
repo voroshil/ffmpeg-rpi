@@ -54,7 +54,7 @@ static int openmax_decode(AVCodecContext *avctx,
     avctx->hwaccel->decode_slice(avctx, avpkt->data, avpkt->size);
     if (avctx->hwaccel->end_frame(avctx) <0){
 	*got_frame = 0;
-	ret = -1;
+	ret = 0;
     }else{
 	*got_frame = 1;
         pic->format = ctx->pix_fmt;
