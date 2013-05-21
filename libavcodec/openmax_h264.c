@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2013, Vladimir Voroshilov
  *
  * This file is part of FFmpeg.
@@ -307,7 +307,6 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
 
 static int openmax_h264_end_frame(AVCodecContext *avctx)
 {
-#if 1
     struct openmax_context *ctx = avctx->hwaccel_context;
     OMX_BUFFERHEADERTYPE *out;
     OMX_ERRORTYPE r;
@@ -331,14 +330,6 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     }
     av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. post fill %x\n", out->nFlags);
 
-#if 0
-    if (out->nFlags & OMX_BUFFERFLAG_CODECCONFIG) {
-           int i;
-           for (i = 0; i < out->nFilledLen; i++)
-               printf("%x ", out->pBuffer[i]);
-           printf("\n");
-    }
-#endif
     {
     AVBufferRef * outbuf = av_buffer_alloc(out->nFilledLen);
     memcpy(outbuf->data, out->pBuffer, out->nFilledLen);
@@ -348,7 +339,6 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     ctx->frame_size = out->nFilledLen;
     out->nFilledLen = 0;
     }
-#endif
     av_log(avctx, AV_LOG_WARNING, "openmax_end_frame. returning 0\n");
     return 0;
 }
