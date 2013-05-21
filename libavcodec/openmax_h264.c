@@ -267,60 +267,44 @@ static int openmax_h264_start_frame(AVCodecContext *avctx,
 {
     return 0;
 }
+
 static int openmax_h264_decode_slice(AVCodecContext *avctx,
                                  const uint8_t *buffer,
                                  uint32_t size)
 {
-  int bytes = 0;
+  int copied;
+  int data_length = size;
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
-  while (bytes < size) {
-    av_log(avctx, AV_LOG_WARNING, "openmax_decode_slice!\n");
+
+  av_log(avctx, AV_LOG_WARNING, "openmax_decode_slice!\n");
+  for(copied = 0; copied < size; copied += data_length) {
     buf = ilclient_get_input_buffer(ctx->video_decode, VIDEO_DECODE_INPUT_PORT, 1);
     if (buf == NULL) {
       av_log(avctx, AV_LOG_WARNING, "Unable to get input buffer!\n");
       return -1;
     }
-    if (ctx->packet_size >0)
-    {
-	memcpy(buf->pBuffer, ctx->packet, ctx->packet_size);
-    }
+    data_length = FFMIN(size - copied, buf->nAllocLen);
     /* fill it */
-    memcpy(buf->pBuffer+ctx->packet_size, buffer + bytes, FFMIN(size-bytes, (16<<10)-ctx->packet_size));
-    buf->nFilledLen = FFMIN(size-bytes, (16<<10));
+    memcpy(buf->pBuffer, buffer + copied, data_length);
+    buf->nFilledLen = data_length;
     buf->nOffset = 0;
-    bytes += FFMIN(size-bytes, (16<<10)-ctx->packet_size);
-    if (ctx->first)
-     {
+
+    if (ctx->first) {
         buf->nFlags = OMX_BUFFERFLAG_STARTTIME;
         ctx->first = 0;
-     }
-     else
+    } else {
         buf->nFlags = OMX_BUFFERFLAG_TIME_UNKNOWN;
-    ctx->packet_size = 0;
-#if 0
-    if (!ctx->changed){
-      int i = 0;
-      uint8_t *dest;
-      dest = buf->pBuffer;
-      for (i=0;i<(16<<10);i+=8)
-  	av_log(avctx, AV_LOG_DEBUG, "[%08x] %02x %02x %02x %02x %02x %02x %02x %02x\n", i, dest[i+0],dest[i+1],dest[i+2],dest[i+3],dest[i+4],dest[i+5],dest[i+6],dest[i+7]);
     }
-#endif
 
     if (OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_decode), buf) != OMX_ErrorNone) {
        av_log(avctx, AV_LOG_ERROR, "Error emptying buffer!\n");
        return -1;
     }
-    if (size-bytes < (16<<10))
-    {
-	memcpy(ctx->packet, buffer+bytes, size-bytes);
-	ctx->packet_size = size-bytes;
-	break;
-    }
   }
   return 0;
 }
+
 static int openmax_h264_end_frame(AVCodecContext *avctx)
 {
 #if 1
@@ -334,7 +318,7 @@ static int openmax_h264_end_frame(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_WARNING, "openmax_end_frame!\n");
    if (!ctx->changed)
     return -1;
-    out = ilclient_get_output_buffer(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, 1);
+    out = ilclient_get_output_buffer(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, 0);
     if (!out) {
         av_log(avctx, AV_LOG_ERROR, "Not getting it :(\n");
         return -1;
