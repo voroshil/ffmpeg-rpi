@@ -84,6 +84,7 @@ static void port_callback(void *userdata, COMPONENT_T *comp, OMX_U32 data)
    if (ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL) != 0) {
       av_log(avctx, AV_LOG_ERROR, "enabling port buffers for %d failed!\n", VIDEO_DECODE_OUTPUT_PORT);
    }
+   dump_port_properties(avctx, ILC_GET_HANDLE(comp), data);
     
 }
 static int openmax_set_decoder_bitrate(COMPONENT_T *video_decode, int nPortIndex, int nTargetBitrate)
@@ -136,7 +137,7 @@ int ff_openmax_create_decoder(AVCodecContext *avctx, struct openmax_context *ctx
    }
 
    vcos_set_vlog_impl(openmax_vcos_log);
-//   ilclient_set_port_settings_callback(ctx->client, port_callback, avctx);
+   ilclient_set_port_settings_callback(ctx->client, port_callback, avctx);
 
    r = OMX_Init();
    if (r != OMX_ErrorNone) {
@@ -270,7 +271,6 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
                                  const uint8_t *buffer,
                                  uint32_t size)
 {
-#if 1
   int bytes = 0;
   struct openmax_context *ctx = avctx->hwaccel_context;
   OMX_BUFFERHEADERTYPE *buf;
@@ -280,13 +280,6 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
     if (buf == NULL) {
       av_log(avctx, AV_LOG_WARNING, "Unable to get input buffer!\n");
       return -1;
-    }
-    if(!ctx->changed &&
-            (ilclient_remove_event(ctx->video_decode, OMX_EventPortSettingsChanged, VIDEO_DECODE_OUTPUT_PORT, 0, 0, 1) == 0))
-    {
-	ctx->changed = 1;
-        ilclient_enable_port_buffers(ctx->video_decode, VIDEO_DECODE_OUTPUT_PORT, NULL, NULL, NULL);
-	dump_port_properties(avctx, ILC_GET_HANDLE(ctx->video_decode), VIDEO_DECODE_OUTPUT_PORT);
     }
     if (ctx->packet_size >0)
     {
@@ -305,6 +298,7 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
      else
         buf->nFlags = OMX_BUFFERFLAG_TIME_UNKNOWN;
     ctx->packet_size = 0;
+#if 0
     if (!ctx->changed){
       int i = 0;
       uint8_t *dest;
@@ -312,6 +306,7 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
       for (i=0;i<(16<<10);i+=8)
   	av_log(avctx, AV_LOG_DEBUG, "[%08x] %02x %02x %02x %02x %02x %02x %02x %02x\n", i, dest[i+0],dest[i+1],dest[i+2],dest[i+3],dest[i+4],dest[i+5],dest[i+6],dest[i+7]);
     }
+#endif
 
     if (OMX_EmptyThisBuffer(ILC_GET_HANDLE(ctx->video_decode), buf) != OMX_ErrorNone) {
        av_log(avctx, AV_LOG_ERROR, "Error emptying buffer!\n");
@@ -324,7 +319,6 @@ static int openmax_h264_decode_slice(AVCodecContext *avctx,
 	break;
     }
   }
-#endif
   return 0;
 }
 static int openmax_h264_end_frame(AVCodecContext *avctx)
